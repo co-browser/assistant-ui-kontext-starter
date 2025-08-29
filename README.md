@@ -16,7 +16,7 @@ Production-ready AI chatbot with personalized responses powered by [assistant-ui
 
 - Node.js 18+ 
 - OpenAI API key
-- Kontext API keys (get yours at [kontext.dev](https://kontext.dev))
+- Kontext API keys (get yours at [dashboard.kontext.dev](https://dashboard.kontext.dev))
 
 ### Installation
 
