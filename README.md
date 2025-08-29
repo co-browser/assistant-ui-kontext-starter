@@ -45,7 +45,7 @@ KONTEXT_API_KEY=ktextXXXXXXXXXXXXXXXX
 OPENAI_API_KEY=sk-XXXXXXXXXXXXXXXXXX
 ```
 
-2. Configure allowed origins in your [Kontext Dashboard](https://app.kontext.dev):
+2. Configure allowed origins in your [Kontext Dashboard](https://dashboard.kontext.dev):
    - Development: `http://localhost:3000`
    - Production: `https://your-domain.com`
 
