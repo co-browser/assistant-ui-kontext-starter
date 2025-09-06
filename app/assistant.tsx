@@ -18,6 +18,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { UserQueryToggle } from "@/components/assistant-ui/user-query-toggle";
+import { KontextHeaderStatus } from "@/components/kontext-header-status";
 
 export const Assistant = () => {
   const runtime = useChatRuntime();
@@ -44,6 +46,11 @@ export const Assistant = () => {
                   </BreadcrumbItem>
                 </BreadcrumbList>
               </Breadcrumb>
+              <div className="ml-auto flex items-center gap-3">
+                <KontextHeaderStatus />
+                <Separator orientation="vertical" className="h-4" />
+                <UserQueryToggle />
+              </div>
             </header>
             <div className="flex-1 overflow-hidden">
               <Thread />

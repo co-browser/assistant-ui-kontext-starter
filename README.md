@@ -64,6 +64,14 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 3. **Personalized Responses**: AI responses are enhanced with user-specific context
 4. **Privacy Control**: Users can disconnect anytime, triggering complete data deletion
 
+### Focused Retrieval (userQuery)
+
+- What it does: Sends your latest message as `userQuery` so the backend retrieves turn-specific context (e.g., a clean, deduped list of projects/legal/docs) without changing your saved persona.
+- When to enable: Targeted asks like “List all my projects/legal/docs/visa” or “Give exhaustive details on …”.
+- When to disable: Open-ended chat, brainstorming, or when you want broader background context.
+- Signals: Response headers show `X-Kontext-UserQuery: 1|0` and `X-Kontext-TurnContext: 1|0` for quick validation.
+
+
 ## Project Structure
 
 ```text

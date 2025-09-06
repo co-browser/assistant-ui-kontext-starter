@@ -13,7 +13,6 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar"
 import { ThreadList } from "./assistant-ui/thread-list"
-import { KontextConnectionStatus } from "./kontext-connect-button"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
@@ -35,8 +34,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <KontextConnectionStatus />
-        <SidebarSeparator />
         <ThreadList />
       </SidebarContent>
       
