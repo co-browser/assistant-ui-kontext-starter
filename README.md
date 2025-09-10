@@ -124,11 +124,10 @@ const context = await persona.getContext({
 
 ### Styling
 
-The project uses shadcn/ui components. Customize the theme in:
-
-- `app/globals.css` - Global styles and CSS variables
-- `components/ui/` - Individual component styles
-- `tailwind.config.js` - Tailwind configuration
+- Tailwind CSS v4 with PostCSS. Core imports live in `app/globals.css` (`@import "tailwindcss";`).
+- Component styling follows shadcn/ui patterns in `components/ui/*`.
+- Customize theme tokens and CSS variables in `app/globals.css`.
+- PostCSS is configured in `postcss.config.mjs`.
 
 ## Deployment
 

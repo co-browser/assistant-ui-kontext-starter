@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, LogOut, Mail, ShieldCheck } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
 
 export function KontextManageSheet({
   trigger,

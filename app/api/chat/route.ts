@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     ? useUserQueryCookie === "1"
     : body.useUserQuery !== false; // default true unless explicitly disabled
 
-  console.log("[Kontext Debug] Cookie userId:", userId);
+  // Context personalization is enabled only when a Kontext userId cookie is present
 
   let systemPrompt: string | undefined;
   let hasTurnContext = false;
@@ -35,8 +35,6 @@ export async function POST(req: Request) {
         ? new Persona({ apiKey: process.env.KONTEXT_API_KEY!, apiUrl: process.env.KONTEXT_API_URL })
         : new Persona({ apiKey: process.env.KONTEXT_API_KEY! });
 
-      console.log("[Kontext Debug] Fetching context for userId:", userId);
-
       // Add retry logic for better reliability
       let attempts = 0;
       const maxAttempts = 2;
@@ -47,24 +45,32 @@ export async function POST(req: Request) {
         const lastUser = [...modelMessages]
           .reverse()
           .find((m) => m.role === "user");
-        const c: any = lastUser?.content as any;
+        const c = lastUser?.content as unknown;
         if (typeof c === "string") {
           userQuery = c;
         } else if (Array.isArray(c)) {
-          userQuery =
-            c
-              .map((part: any) => {
-                if (part?.type === "text" && typeof part?.text === "string")
-                  return part.text;
-                if (typeof part === "string") return part;
-                if (part?.content && typeof part.content === "string")
-                  return part.content;
-                return "";
-              })
-              .join(" ")
-              .trim() || undefined;
+          type TextPart = { type?: string; text?: string; content?: string } | string;
+          const isTextPart = (obj: unknown): obj is { type: string; text: string } => {
+            if (typeof obj !== "object" || obj === null) return false;
+            const rec = obj as Record<string, unknown>;
+            return rec.type === "text" && typeof rec.text === "string";
+          };
+          const hasContent = (obj: unknown): obj is { content: string } => {
+            if (typeof obj !== "object" || obj === null) return false;
+            const rec = obj as Record<string, unknown>;
+            return typeof rec.content === "string";
+          };
+          userQuery = c
+            .map((part: TextPart) => {
+              if (typeof part === "string") return part;
+              if (isTextPart(part)) return part.text;
+              if (hasContent(part)) return part.content;
+              return "";
+            })
+            .join(" ")
+            .trim() || undefined;
         }
-      } catch (_) {}
+      } catch {}
 
       while (attempts < maxAttempts) {
         try {
@@ -79,19 +85,13 @@ export async function POST(req: Request) {
           if (context?.systemPrompt) {
             break; // Success, exit retry loop
           }
-        } catch (retryError: any) {
+        } catch {
           attempts++;
-          console.log(`[Kontext Debug] Attempt ${attempts} failed:`, {
-            message: retryError?.message,
-            code: retryError?.code || retryError?.name,
-            status: retryError?.status || retryError?.response?.status,
-          });
           if (attempts < maxAttempts) {
             await new Promise((resolve) => setTimeout(resolve, 500)); // Wait 500ms before retry
           } else {
             // Try a final fallback: request without userQuery (may hit cache on server)
             try {
-              console.log('[Kontext Debug] Final fallback: retry without userQuery');
               context = await persona.getContext({
                 userId,
                 task: 'chat',
@@ -99,8 +99,8 @@ export async function POST(req: Request) {
                 privacyLevel: 'none',
               });
               fallbackMode = 'retry-no-userQuery';
-            } catch (finalErr: any) {
-              throw finalErr;
+            } catch {
+              throw new Error('Kontext context fetch failed');
             }
           }
         }
@@ -110,41 +110,17 @@ export async function POST(req: Request) {
       const basePrompt = context?.systemPrompt || "";
       const instruction = `You are a personalized assistant. Always answer the user's last message directly and concisely. Use any turn-specific context provided by the server and persona facts to include specific names, projects, numbers, or dates when relevant. Avoid generic greetings; respond with the requested information first.`;
       systemPrompt = `${instruction}\n\n${basePrompt}`.trim();
-      console.log(
-        "[Kontext Debug] System prompt received:",
-        systemPrompt ? "Yes" : "No"
-      );
-      console.log(
-        "[Kontext Debug] System prompt preview:",
-        systemPrompt?.substring(0, 200)
-      );
-      console.log(
-        "[Kontext Debug] userQuery used:",
-        useUserQuery,
-        "| preview:",
-        typeof userQuery === "string" ? userQuery.substring(0, 120) : "n/a"
-      );
-
-      // Additional validation
-      if (systemPrompt && systemPrompt.includes("Michel Osswald")) {
-        console.log(
-          "[Kontext Debug] Identity context confirmed: Michel Osswald found in prompt"
-        );
-      }
       // Detect an actual injected turn context section (avoid false positives from our instruction wording)
       hasTurnContext =
         !!systemPrompt && /(^|\n)Context for this turn:/i.test(systemPrompt);
-      console.log("[Kontext Debug] hasTurnContext:", hasTurnContext);
 
       // Cache the successful system prompt for brief reuse (e.g., 10 minutes)
       if (systemPrompt) {
         SYSTEM_PROMPT_CACHE.set(userId, { prompt: systemPrompt, at: Date.now() });
       }
-    } catch (error: any) {
+    } catch {
       // Continue without personalization if Kontext fails
-      const code = error?.code || error?.name;
-      const status = error?.status || error?.response?.status;
-      console.error('[Kontext Debug] Context fetch failed after retries:', { message: error?.message, code, status });
+      // Swallow error details; rely on cached prompt if present
       // Use a cached prompt if available and fresh (<= 10 minutes)
       const cached = SYSTEM_PROMPT_CACHE.get(userId);
       const tenMinutes = 10 * 60 * 1000;
@@ -152,11 +128,9 @@ export async function POST(req: Request) {
         systemPrompt = cached.prompt;
         cacheHit = true;
         fallbackMode = fallbackMode === 'none' ? 'cached' : fallbackMode;
-        console.log('[Kontext Debug] Using cached system prompt');
       }
     }
   } else {
-    console.log("[Kontext Debug] No userId in cookie");
   }
 
   // Optionally prepend system message with Kontext context
@@ -167,11 +141,7 @@ export async function POST(req: Request) {
       role: "system",
       content: systemPrompt,
     });
-    console.log("[Kontext Debug] System message added to model messages");
-    console.log("[Kontext Debug] Total messages:", modelMessages.length);
-    console.log("[Kontext Debug] First message role:", modelMessages[0]?.role);
   } else {
-    console.log("[Kontext Debug] No system prompt to add");
   }
 
   const result = streamText({

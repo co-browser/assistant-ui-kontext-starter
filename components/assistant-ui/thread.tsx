@@ -21,8 +21,13 @@ import {
 } from "lucide-react";
 
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { useKontext } from "@kontext.dev/kontext-sdk/react";
+import { useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { useKontextCookie } from "@/hooks/useKontextCookie";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { MarkdownText } from "./markdown-text";
 import { ToolFallback } from "./tool-fallback";
@@ -178,6 +183,7 @@ const Composer: FC = () => {
       <ThreadPrimitive.Empty>
         <ThreadWelcomeSuggestions />
       </ThreadPrimitive.Empty>
+      
       {/* aui-composer-root */}
       <ComposerPrimitive.Root className="focus-within::ring-offset-2 relative flex w-full flex-col rounded-2xl focus-within:ring-2 focus-within:ring-black dark:focus-within:ring-white">
         {/* aui-composer-input */}
@@ -197,20 +203,139 @@ const Composer: FC = () => {
 };
 
 const ComposerAction: FC = () => {
+  const { isConnected } = useKontext();
+  useKontextCookie(); // Ensure cookie is set for uploads
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<{ status: string; datasetId: string | null } | null>(null);
+
+  const selectFile = () => {
+    if (!isConnected) {
+      window.alert("Connect Kontext to upload");
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputElement = e.currentTarget;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const type = file.type || "";
+    const isText = type.startsWith("text/");
+    const isJson = type === "application/json";
+    if (!isText && !isJson) {
+      window.alert("Only text files (.txt, .csv, .md, etc.) or .json supported");
+      inputElement.value = "";
+      return;
+    }
+    setUploading(true);
+    setUploadStatus({ status: "uploading", datasetId: null });
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/kontext/datasets/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Upload failed");
+      
+      const datasetId = data.datasetId;
+      setUploadStatus({ status: "processing", datasetId });
+      
+      const iv = window.setInterval(async () => {
+        try {
+          const u = await fetch(`/api/kontext/datasets/status?jobId=${encodeURIComponent(data.jobId)}`);
+          const s = await u.json();
+          const status = s?.status || "processing";
+          setUploadStatus({ status, datasetId });
+          if (status === "completed" || status === "error" || status === "failed") {
+            window.clearInterval(iv);
+            setUploading(false);
+            // Hide status after 3 seconds on completion
+            if (status === "completed") {
+              setTimeout(() => setUploadStatus(null), 3000);
+            }
+          }
+        } catch {
+          window.clearInterval(iv);
+          setUploading(false);
+          setUploadStatus({ status: "error", datasetId });
+        }
+      }, 1000);
+    } catch {
+      setUploadStatus({ status: "error", datasetId: null });
+      setUploading(false);
+      // Clear error after 3 seconds
+      setTimeout(() => setUploadStatus(null), 3000);
+    } finally {
+      inputElement.value = ""; // reset to allow reselect same file
+    }
+  };
+
   return (
     // aui-composer-action-wrapper
     <div className="bg-muted border-border dark:border-muted-foreground/15 relative flex items-center justify-between rounded-b-2xl border-x border-b p-2">
-      <TooltipIconButton
-        tooltip="Attach file"
-        variant="ghost"
-        // aui-composer-attachment-button
-        className="hover:bg-foreground/15 dark:hover:bg-background/50 scale-115 p-3.5"
-        onClick={() => {
-          console.log("Attachment clicked - not implemented");
-        }}
-      >
-        <PlusIcon />
-      </TooltipIconButton>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".txt,.csv,.md,.json,text/*,application/json"
+        className="hidden"
+        onChange={onFileChange}
+      />
+      <div className="flex items-center gap-1.5">
+        {/* Glow wrapper to match Kontext logo illumination (always on, stronger on hover) */}
+        <div className="relative group">
+          <div className="absolute -inset-1 rounded-lg bg-gradient-to-r from-purple-600/20 to-pink-600/20 blur opacity-60 group-hover:opacity-100 transition duration-300" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "relative bg-background/80 ring-1 ring-border/50 hover:bg-background/90 h-8 text-xs transition-all",
+              uploading ? "w-8 px-0" : "px-2.5"
+            )}
+            onClick={selectFile}
+            disabled={uploading}
+            aria-label={uploading ? "Uploading to Kontext" : "Add to Kontext"}
+          >
+            {uploading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <>
+                <PlusIcon className="h-3.5 w-3.5 mr-1.5" />
+                Add to Kontext
+              </>
+            )}
+          </Button>
+        </div>
+        
+        {/* Clean status display next to button */}
+        {uploadStatus && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="flex items-center"
+          >
+            <Badge 
+              variant={
+                uploadStatus.status === "completed" ? "secondary" : 
+                uploadStatus.status === "error" || uploadStatus.status === "failed" ? "destructive" : 
+                "outline"
+              }
+              className="text-[10px] h-6 px-2 py-0 font-normal flex items-center"
+            >
+              {uploadStatus.status === "completed" && <CheckIcon className="h-2.5 w-2.5" />}
+              {uploadStatus.status === "error" && "Error"}
+              {uploadStatus.status === "failed" && "Failed"}
+              {uploadStatus.status === "processing" && "Processing"}
+              {uploadStatus.status === "uploading" && "Uploading"}
+              {uploadStatus.datasetId && uploadStatus.status === "completed" && (
+                <span className="ml-0.5 opacity-60">{uploadStatus.datasetId.slice(0, 6)}</span>
+              )}
+            </Badge>
+          </motion.div>
+        )}
+      </div>
 
       <ThreadPrimitive.If running={false}>
         <ComposerPrimitive.Send asChild>
